@@ -104,23 +104,25 @@ dicom_to_nifti() {
 	fi
 	
 }
-rescale_T1() {
+resample_T1() {
 	#to isotropic 1x1x1mm
 	#save the original resolution
 	local input_T1_toResample=${1}
-	local subject_id=$(basename ${input_T1_toResample} | cut -d. -f1)
+	local basename=${2}
+	# local subject_id=$(basename ${input_T1_toResample} | cut -d. -f1)
 	local dirname=$(dirname ${input_T1_toResample})
-	local output_file=${dirname}/${subject_id}_resampled.nii.gz
+	local output_file=${dirname}/${basename}_resampled.nii.gz
 
 	flirt -in "$input_T1_toResample" -ref "$input_T1_toResample" -applyisoxfm 1.0 -interp trilinear -nosearch -out "$output_file"
 
 }
 MNI_registration() { #flirt
 	local input_T1_toRegister=${1}
-	local subject_id=$(basename ${input_T1_toRegister} | cut -d. -f1)
+	local basename=${2}
+	# local subject_id=$(basename ${input_T1_toRegister} | cut -d. -f1)
 	local dirname=$(dirname ${input_T1_toRegister})
-	local output_mat=${dirname}/${subject_id}_2MNI.mat
-	local output_T1_registered=${dirname}/${subject_id}_2MNI.nii.gz
+	local output_mat=${dirname}/${basename}_MNI.mat
+	local output_T1_registered=${dirname}/${basename}_MNI.nii.gz
 	local template="{FSLDIR}/data/standard/MNI152_T1_1mm.nii.gz"
 
 	flirt \
@@ -137,6 +139,7 @@ MNI_registration() { #flirt
 
 Skull_Stripping() { #synthstrip
     local T1_with_skull=${1}
+	local basename=${2}
 	local dirname=$(dirname ${T1_with_skull})
 	local subject_id=$(basename ${T1_with_skull} | cut -d. -f1)
 	local T1_without_skull=${dirname}/${subject_id}_sk.nii.gz
@@ -249,22 +252,19 @@ fi
 ### END TEST NII2DCM ###
 
 ###SCRIPT###
-# T1_ext="${T1##*.}"
-# if [ "$T1_ext" == "nii" ] || [ "$T1_ext" == "gz" ]; then
-# 	fileT1=${T1}
-# 	echo "The file is a Nifti!"
-# 	T1_dirname=$( dirname $fileT1 )
 
-
+###CHECK FILE EXTENSION AND CONVERT TO NIFTI IF NEEDED###
 T1_ext="${T1##*.}"
 if [ "$T1_ext" == "nii" ] || [ "$T1_ext" == "gz" ]; then
 	fileT1=${T1}
 	echo "The file is a Nifti!"
 	T1_dirname=$( dirname $fileT1 )
+	T1_basename=$( basename $fileT1 )
 elif [ $T1_ext == "zip" ]; then
 	echo "The file is .zip folder!"
 	fileT1=$(unzip $T1 -d "$extract_dir")
 	T1_dirname=$( dirname $fileT1 )
+	T1_basename=$( basename $fileT1 )
 
 	for f in "$extract_dir"/*; do
 		dicom_found=false
@@ -292,4 +292,31 @@ echo "Processed file/directory: $fileT1"
 
 if [ $is_dicom == true ]; then
 	dicom_to_nifti $fileT1 $T1_dirname "$( basename ${fileT1} )"
+	fileT1=${T1_dirname}/$T1_basename"_T1w.nii"
 fi
+###################################################
+######## RESAMPLE TO 1X1X1MM ######################
+###################################################
+
+resample_T1 $fileT1 $T1_basename
+fileT1=${T1_dirname}/$T1_basename_"resampled.nii.gz"
+
+###################################################
+######## MNI REGISTRATION #########################
+###################################################
+
+MNI_registration $fileT1 $T1_basename
+fileT1=${T1_dirname}/$T1_basename"_MNI.nii.gz"
+
+###################################################
+######## SKULL STRIPPING ##########################
+###################################################
+
+Skull_Stripping $fileT1 $T1_basename
+fileT1=${T1_dirname}/$T1_basename"_sk.nii.gz"
+
+###################################################
+######## NNUNET PREDICTION ########################
+###################################################
+
+# nnUNet_prediction $T1_dirname $T1_dirname 
