@@ -32,7 +32,7 @@ Usage:
 Main arguments:
 
   -i, --input=<filename>            Input a post operative T1-w-CE image. It could be a NifTI file, a dicom folder or a zip cointainting dicoms 
-  -o, --output=<filename>           Output file name (default: same as the input + "mask"). The output is a surgical cavity mask in the same space of the subject.
+  -o, --output=<filename>           Output directory.
   -e, --output_extension=<modality> Output file extension (default: same as the input). <extension> can be one of the following: n (nii.gz), d (dicom). The image will be stored accordinlgy.
   -q, --quality=<quality>   (UPDATE API)        Quality of the output mask (default: 1). It can be 0 (low), 1 (high). The higher the quality, the longer the processing time.
 Optional:
@@ -73,8 +73,8 @@ dicom_to_nifti() {
 	
 	local fileT1_dicomdir=${fileT1}
 	local fileT1_converted_dir=${outputdir}
-	local fileT1=${fileT1_converted_dir}'/'${basename}'T1w.nii'
-	local json_T1=${fileT1_converted_dir}'/'${basename}'T1w.json'
+	local fileT1=${fileT1_converted_dir}'/'${basename}'_T1w.nii'
+	local json_T1=${fileT1_converted_dir}'/'${basename}'_T1w.json'
 
 	if ( [ $( exists ${fileT1} ) -eq 0 ] ); then
 		echo "T1-w convert directory:" ${fileT1_converted_dir}
@@ -110,45 +110,45 @@ resample_T1() {
 	local input_T1_toResample=${1}
 	local basename=${2}
 	# local subject_id=$(basename ${input_T1_toResample} | cut -d. -f1)
-	local dirname=$(dirname ${input_T1_toResample})
-	local output_file=${dirname}/${basename}_resampled.nii.gz
-
-	flirt -in "$input_T1_toResample" -ref "$input_T1_toResample" -applyisoxfm 1.0 -interp trilinear -nosearch -out "$output_file"
-
+	local output_dir=${3}  # Add output directory parameter
+    
+    local output_file=${output_dir}/${basename}_resampled.nii.gz
+    
+    flirt -in "$input_T1_toResample" -ref "$input_T1_toResample" -applyisoxfm 1.0 -interp trilinear -nosearch -out "$output_file" -v
 }
 MNI_registration() { #flirt
 	local input_T1_toRegister=${1}
 	local basename=${2}
 	# local subject_id=$(basename ${input_T1_toRegister} | cut -d. -f1)
-	local dirname=$(dirname ${input_T1_toRegister})
-	local output_mat=${dirname}/${basename}_MNI.mat
-	local output_T1_registered=${dirname}/${basename}_MNI.nii.gz
-	local template="{FSLDIR}/data/standard/MNI152_T1_1mm.nii.gz"
+	local output_dir=${3}
+	local output_mat=${output_dir}/${basename}_MNI.mat
+	local output_T1_registered=${output_dir}/${basename}_MNI.nii.gz
+	local template="${FSLDIR}/data/standard/MNI152_T1_1mm.nii.gz"
 
 	flirt \
        -in $input_T1_toRegister \
        -ref $template \
-       -omat $output_mat
-       
+       -omat $output_mat \
+       -v
     flirt \
        -in $input_T1_toRegister \
        -ref $template \
        -applyxfm -init $output_mat \
-       -out $output_T1_registered
+       -out $output_T1_registered \
+	   -v
 }
 
 Skull_Stripping() { #synthstrip
     local T1_with_skull=${1}
 	local basename=${2}
-	local dirname=$(dirname ${T1_with_skull})
-	local subject_id=$(basename ${T1_with_skull} | cut -d. -f1)
-	local T1_without_skull=${dirname}/${subject_id}_sk.nii.gz
+	local output_dir=${3}
+	# local subject_id=$(basename ${T1_with_skull} | cut -d. -f1)
+	local T1_without_skull=${output_dir}/${basename}_sk.nii.gz
 	
 	mri_synthstrip \
        -i $T1_with_skull \
-       -m $T1_without_skull
-       --out $output_img 
-
+       -o $T1_without_skull \
+       -m ${output_dir}/${basename}_sk_mask.nii.gz
 }
 
 nnUNet_prediction() {
@@ -204,7 +204,7 @@ while [[ $# -gt 0 ]]; do
 		;;
 		-o|--output)	
 		shift
-		output_filename=${1}
+		output_directory=${1}
 		;;
 		-q|--quality)
 		shift
@@ -230,8 +230,9 @@ if [ -z "$T1" ]; then
     Usage
 fi
 
-if [ -z "$output_filename" ]; then
-    output_filename="${T1%.*}_mask"
+if [ -z "$output_directory" ]; then
+	echo "Output directory not specified."
+	Usage
 fi
 
 if [ -z "$output_extension" ]; then
@@ -255,16 +256,17 @@ fi
 
 ###CHECK FILE EXTENSION AND CONVERT TO NIFTI IF NEEDED###
 T1_ext="${T1##*.}"
+T1_basename=$(basename "$T1" | sed -E 's/\.(nii\.gz|nii|zip)$//')
 if [ "$T1_ext" == "nii" ] || [ "$T1_ext" == "gz" ]; then
 	fileT1=${T1}
 	echo "The file is a Nifti!"
-	T1_dirname=$( dirname $fileT1 )
-	T1_basename=$( basename $fileT1 )
 elif [ $T1_ext == "zip" ]; then
 	echo "The file is .zip folder!"
-	fileT1=$(unzip $T1 -d "$extract_dir")
-	T1_dirname=$( dirname $fileT1 )
-	T1_basename=$( basename $fileT1 )
+	unzip "$T1" -d "$extract_dir" > /dev/null 2>&1  # Suppress output
+	
+	# Set fileT1 to the extraction directory
+	fileT1="$extract_dir"
+	echo $T1_basename
 
 	for f in "$extract_dir"/*; do
 		dicom_found=false
@@ -291,32 +293,32 @@ echo "Processed file/directory: $fileT1"
 
 
 if [ $is_dicom == true ]; then
-	dicom_to_nifti $fileT1 $T1_dirname "$( basename ${fileT1} )"
-	fileT1=${T1_dirname}/$T1_basename"_T1w.nii"
+	dicom_to_nifti $fileT1 $output_directory $T1_basename
+	fileT1=${output_directory}/$T1_basename"_T1w.nii"
 fi
 ###################################################
 ######## RESAMPLE TO 1X1X1MM ######################
 ###################################################
 
-resample_T1 $fileT1 $T1_basename
-fileT1=${T1_dirname}/$T1_basename_"resampled.nii.gz"
+resample_T1 $fileT1 $T1_basename $output_directory
+fileT1=${output_directory}/$T1_basename"_resampled.nii.gz"
 
 ###################################################
 ######## MNI REGISTRATION #########################
 ###################################################
 
-MNI_registration $fileT1 $T1_basename
-fileT1=${T1_dirname}/$T1_basename"_MNI.nii.gz"
+MNI_registration $fileT1 $T1_basename $output_directory
+fileT1=${output_directory}/$T1_basename"_MNI.nii.gz"
 
 ###################################################
 ######## SKULL STRIPPING ##########################
 ###################################################
 
-Skull_Stripping $fileT1 $T1_basename
-fileT1=${T1_dirname}/$T1_basename"_sk.nii.gz"
+Skull_Stripping $fileT1 $T1_basename $output_directory
+fileT1=${output_directory}/$T1_basename"_sk.nii.gz"
 
 ###################################################
 ######## NNUNET PREDICTION ########################
 ###################################################
 
-# nnUNet_prediction $T1_dirname $T1_dirname 
+nnUNet_prediction $T1_dirname $output_directory 
