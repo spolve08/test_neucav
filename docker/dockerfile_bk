@@ -1,0 +1,65 @@
+FROM pytorchlightning/pytorch_lightning:base-cuda-py3.11-torch2.2-cuda12.1.0
+# ARG USER=nilab
+# ARG USER_ID=1014
+# ARG USER_GROUP=NILAB
+# ARG USER_GROUP_ID=1014
+# ARG USER_HOME=/home/${USER}
+# RUN groupadd --gid $USER_GROUP_ID $USER && useradd --uid $USER_ID --gid $USER_GROUP_ID -m $USER
+WORKDIR /app
+
+# Upgrade pip first
+RUN python -m pip install --upgrade pip
+
+# Install core scientific computing libraries
+RUN pip install numpy scipy pandas matplotlib seaborn
+
+# Install neuroscience-specific libraries
+RUN pip install \
+    nibabel \
+    nilearn \
+
+# Install your specific packages
+RUN pip install nnunetv2
+RUN pip install synthstrip
+RUN pip install dcm2niix
+
+# Clone and install nii2dcm
+RUN git clone https://github.com/tomaroberts/nii2dcm.git
+WORKDIR /app/nii2dcm
+RUN pip install -r requirements.txt
+RUN pip install .
+
+# Install FSL
+RUN wget -O- https://fsl.fmrib.ox.ac.uk/fsldownloads/fslconda/releases/fslinstaller.py | python - -d /usr/local/fsl -V 6.0.7.4
+
+# Set FSL environment variables
+ENV FSLDIR=/usr/local/fsl
+ENV PATH=${FSLDIR}/bin:${PATH}
+ENV FSLOUTPUTTYPE=NIFTI_GZ
+ENV FSLMULTIFILEQUIT=TRUE
+ENV FSLTCLSH=${FSLDIR}/bin/fsltclsh
+ENV FSLWISH=${FSLDIR}/bin/fslwish
+ENV FSLLOCKDIR=""
+ENV FSLMACHINELIST=""
+ENV FSLREMOTECALL=""
+ENV FSLGECUDAQ="cuda.q"
+
+# Go back to main working directory
+WORKDIR /app
+
+#servono a noi e non vengono mappate
+RUN mkdir -p /app/data/raw
+RUN mkdir -p /app/data/results
+RUN mkdir -p /app/data/preprocessed
+#queste vengono mappate
+RUN mkdir -p /app/input
+RUN mkdir -p /app/output
+#variabili di ambiente per nnunet
+ENV PYTHONPATH=/app
+ENV nnUNet_raw="/app/data/raw"
+ENV nnUNet_preprocessed="/app/data/preprocessed"
+ENV nnUNet_results="/app/data/results"
+COPY Dataset800_BraTS/results/ /app/data/results
+COPY Dataset800_BraTS/raw/ /app/data/raw
+COPY Dataset800_BraTS/preprocessed/ /app/data/preprocessed
+# ENTRYPOINT ["nnUNetv2_predict", "-i", "/app/input", "-o", "/app/output", "-d", "800", "-c", "3d_fullres_bs12", "-tr", "nnUNetTrainer_100epochs"]

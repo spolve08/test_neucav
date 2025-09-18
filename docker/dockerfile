@@ -1,11 +1,27 @@
 FROM pytorchlightning/pytorch_lightning:base-cuda-py3.11-torch2.2-cuda12.1.0
-# ARG USER=nilab
-# ARG USER_ID=1014
-# ARG USER_GROUP=NILAB
-# ARG USER_GROUP_ID=1014
-# ARG USER_HOME=/home/${USER}
-# RUN groupadd --gid $USER_GROUP_ID $USER && useradd --uid $USER_ID --gid $USER_GROUP_ID -m $USER
+
 WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    wget \
+    git \
+    tcsh \
+    xfonts-base \
+    libssl-dev \
+    python-is-python3 \
+    python3-matplotlib \
+    python3-numpy \
+    gsl-bin \
+    netpbm \
+    gnome-tweak-tool \
+    libjpeg62 \
+    xvfb \
+    xterm \
+    vim \
+    curl \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
 
 # Upgrade pip first
 RUN python -m pip install --upgrade pip
@@ -16,7 +32,7 @@ RUN pip install numpy scipy pandas matplotlib seaborn
 # Install neuroscience-specific libraries
 RUN pip install \
     nibabel \
-    nilearn \
+    nilearn
 
 # Install your specific packages
 RUN pip install nnunetv2
@@ -30,6 +46,7 @@ RUN pip install -r requirements.txt
 RUN pip install .
 
 # Install FSL
+WORKDIR /app
 RUN wget -O- https://fsl.fmrib.ox.ac.uk/fsldownloads/fslconda/releases/fslinstaller.py | python - -d /usr/local/fsl -V 6.0.7.4
 
 # Set FSL environment variables
@@ -44,22 +61,44 @@ ENV FSLMACHINELIST=""
 ENV FSLREMOTECALL=""
 ENV FSLGECUDAQ="cuda.q"
 
-# Go back to main working directory
-WORKDIR /app
+# Install AFNI
+RUN curl -O https://afni.nimh.nih.gov/pub/dist/bin/misc/@update.afni.binaries
+RUN tcsh @update.afni.binaries -package linux_ubuntu_16_64 -do_extras
+ENV PATH=/root/abin:${PATH}
 
-#servono a noi e non vengono mappate
+# Install FreeSurfer (for mri_synthstrip)
+RUN wget -qO- https://surfer.nmr.mgh.harvard.edu/pub/dist/freesurfer/7.4.1/freesurfer-linux-ubuntu22_amd64-7.4.1.tar.gz | tar zxv -C /opt
+ENV FREESURFER_HOME=/opt/freesurfer
+ENV PATH=${FREESURFER_HOME}/bin:${PATH}
+
+# Create directories
 RUN mkdir -p /app/data/raw
-RUN mkdir -p /app/data/results
+RUN mkdir -p /app/data/results  
 RUN mkdir -p /app/data/preprocessed
-#queste vengono mappate
 RUN mkdir -p /app/input
 RUN mkdir -p /app/output
-#variabili di ambiente per nnunet
+
+# Set nnUNet environment variables
 ENV PYTHONPATH=/app
 ENV nnUNet_raw="/app/data/raw"
-ENV nnUNet_preprocessed="/app/data/preprocessed"
+ENV nnUNet_preprocessed="/app/data/preprocessed" 
 ENV nnUNet_results="/app/data/results"
-COPY Dataset800_BraTS/results/ /app/data/results
-COPY Dataset800_BraTS/raw/ /app/data/raw
-COPY Dataset800_BraTS/preprocessed/ /app/data/preprocessed
-# ENTRYPOINT ["nnUNetv2_predict", "-i", "/app/input", "-o", "/app/output", "-d", "800", "-c", "3d_fullres_bs12", "-tr", "nnUNetTrainer_100epochs"]
+
+# Copy nnUNet data
+COPY Dataset800_BraTS/results/ /app/data/results/
+COPY Dataset800_BraTS/raw/ /app/data/raw/
+COPY Dataset800_BraTS/preprocessed/ /app/data/preprocessed/
+
+# Copy scripts
+COPY Neucav.sh /app/
+COPY calculate_overlap_with_subROIs.py /app/
+COPY calculate_overlap_with_corROIs.py /app/
+
+# Make script executable
+RUN chmod +x /app/Neucav.sh
+
+# Set working directory
+WORKDIR /app
+
+# Default entrypoint
+ENTRYPOINT ["/app/Neucav.sh"]
