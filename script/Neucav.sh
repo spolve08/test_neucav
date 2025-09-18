@@ -178,6 +178,51 @@ Skull_Stripping() { #synthstrip
        -o $T1_without_skull \
        -m ${output_dir}/${basename}_sk_mask.nii.gz
 }
+#for local test in worksation
+
+
+# nnUNet_prediction() {
+#     local preprocessed_T1=${1}
+#     local output_dir=${2}
+#     local basename=${3}
+    
+#     local expected_mask="${output_dir}/${basename}_surgical_mask.nii.gz"
+#     if [ -f "$expected_mask" ]; then
+#         echo "Mask already exists, skipping prediction"
+#         mask_path="$expected_mask"
+#         return 0
+#     fi
+#     source nnunetv2/bin/activate
+#     export nnUNet_raw="/home/alberto/nnunetv2/nnUNet_raw"
+#     export nnUNet_preprocessed="/home/alberto/nnunetv2/nnUNet_preprocessed"
+#     export nnUNet_results="/home/alberto/nnunetv2/nnUNet_results"
+#     # Setup directories
+#     local nnunet_input_dir="${output_dir}/nnunet_input"
+#     local temp_output_dir=$(mktemp -d)
+#     mkdir -p "$nnunet_input_dir"
+    
+#     # Copy preprocessed image with nnUNet naming
+#     local clean_name=$(echo "$basename" | sed 's/[-_]//g' | tr '[:upper:]' '[:lower:]')
+#     cp "$preprocessed_T1" "${nnunet_input_dir}/${clean_name}_001_0000.nii.gz"
+    
+#     # Run prediction
+#     local cmd="nnUNetv2_predict -i ${nnunet_input_dir} -o ${temp_output_dir} -d 950 -c 3d_fullres_bs12 -tr nnUNetTrainer_100epochs"
+#     [ $mask_quality -eq 0 ] && cmd="$cmd -f 0 -device cpu"
+#     [ $mask_quality -eq 1 ] && [ "$use_gpu" = false ] && cmd="$cmd -device cpu"
+    
+#     echo "Running nnUNet prediction (quality: $mask_quality)..."
+#     eval $cmd
+    
+#     # Copy output mask
+#     local output_mask=$(ls "${temp_output_dir}"/*.nii.gz | head -1)
+#     [ ! -f "$output_mask" ] && { echo "Error: No output mask found!"; exit 1; }
+    
+#     cp "$output_mask" "$expected_mask"
+#     mask_path="$expected_mask"
+#     rm -rf "$temp_output_dir"
+    
+#     echo "Prediction complete: $expected_mask"
+# }
 
 nnUNet_prediction() {
     local preprocessed_T1=${1}
@@ -190,10 +235,13 @@ nnUNet_prediction() {
         mask_path="$expected_mask"
         return 0
     fi
-    source nnunetv2/bin/activate
-    export nnUNet_raw="/home/alberto/nnunetv2/nnUNet_raw"
-    export nnUNet_preprocessed="/home/alberto/nnunetv2/nnUNet_preprocessed"
-    export nnUNet_results="/home/alberto/nnunetv2/nnUNet_results"
+    
+    # No need to activate virtual environment in Docker - nnUNet is installed globally
+    # source nnunetv2/bin/activate
+    export nnUNet_raw="/app/data/raw"
+    export nnUNet_preprocessed="/app/data/preprocessed"
+    export nnUNet_results="/app/data/results"
+    
     # Setup directories
     local nnunet_input_dir="${output_dir}/nnunet_input"
     local temp_output_dir=$(mktemp -d)
