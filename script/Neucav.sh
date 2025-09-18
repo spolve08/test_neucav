@@ -35,9 +35,10 @@ Main arguments:
   -o, --output=<filename>           Output directory.
   -e, --output_extension=<modality> Output file extension (default: same as the input). <extension> can be one of the following: n (nii.gz), d (dicom). The image will be stored accordinlgy.
   -q, --quality=<quality>   (UPDATE API)        Quality of the output mask (default: 1). It can be 0 (low), 1 (high). The higher the quality, the longer the processing time.
+  -z, --zip                 (DEFAULT)        Create a zip archive of the output files
 Optional:
   -h, --help                        Show this help message
-  -z, --zip                         Create a zip archive of the output files
+  
 Examples:
 
 `basename $0` -i sub_xxx_T1w_CE.nii.gz -m n
@@ -353,7 +354,7 @@ fi
 nargs=0
 is_dicom=false
 extract_dir="/tmp/neucav_extract_$$"
-zip_output=false
+zip_output=true
 use_gpu=false
 
 # Script and helper paths
@@ -464,6 +465,11 @@ fileT1=${output_directory}/$T1_basename"_MNI.nii.gz"
 
 nnUNet_prediction $fileT1 $output_directory $T1_basename
 
+fslstats "$mask_path" -V | cut -d' ' -f2- > ${output_directory}/vol.txt
+vol=$(cat ${output_directory}/vol.txt)
+if (( $(echo "$vol == 0" | bc -l) )); then
+    echo "Warning: The predicted mask is empty (volume = 0). Please check the input image." > ${output_directory}/NO_SEG_CREATED.txt
+fi
 ###################################################
 ######### MASK PROCESSING STEPS ###################
 ###################################################
@@ -494,6 +500,7 @@ mask_to_anisotropic $mask_original_orient $original_T1 $final_mask
 echo "Final mask in original space saved as: $final_mask"
 
 fslcpgeom $original_T1 $final_mask
+
 ###################################################
 ######## CONVERT MASK  IN DICOM (BETA) ############
 ###################################################
@@ -528,3 +535,48 @@ output_cor="${output_directory}/${T1_basename}_GM_importance.csv"
 python3 "$PYTHON_SCRIPT_SUB" --lesions-path $mask_path -o $output_sub
 python3 "$PYTHON_SCRIPT_COR" --lesions-path $mask_path -o $output_cor
 python3 "$PYTHON_SCRIPT_PLOT" -g $output_cor -w $output_sub -o $output_directory
+
+
+
+
+###################################################
+######## COPY FINAL OUTPUTS TO ZIP FOLDER ########
+###################################################
+
+# Create final output folder
+final_output_dir="${output_directory}/${T1_basename}_final_outputs"
+mkdir -p "$final_output_dir"
+
+# Copy files with standardized names
+# (i) Resection cavity in native space
+if [ "$output_extension" == "d" ]; then
+    # For DICOM output - copy the DICOM folder and zip it
+    if [ -d "$dicom_mask_dir" ]; then
+        zip -r "${final_output_dir}/res_cavity.zip" "$dicom_mask_dir"
+    fi
+else
+    # For NIfTI output
+    cp "$final_mask" "${final_output_dir}/res_cavity.nii.gz"
+fi
+
+# (ii) Affine matrix for MNI registration
+cp "${output_directory}/${T1_basename}_MNI.mat" "${final_output_dir}/flirt_to_mni.mat"
+
+# (iii) Resection cavity in MNI space
+cp "$mask_path" "${final_output_dir}/res_cavity_MNI.nii.gz"
+
+# (iv) CSV files with importance measures
+cp "${output_directory}/${T1_basename}_GM_importance.csv" "${final_output_dir}/GM_importance.csv"
+cp "${output_directory}/${T1_basename}_WM_importance.csv" "${final_output_dir}/WM_importance.csv"
+
+# (v) Radar plots (assuming they're saved as PNG files)
+find "$output_directory" -name "*radar*" -type f \( -name "*.png" -o -name "*.pdf" -o -name "*.svg" \) -exec cp {} "$final_output_dir"/ \;
+
+echo "Final outputs copied to: $final_output_dir"
+
+# Optional: Create zip of final outputs
+if [ "$zip_output" = true ]; then
+    zip_final="${output_directory}/${T1_basename}_final_results.zip"
+    (cd "$output_directory" && zip -r "$(basename "$zip_final")" "$(basename "$final_output_dir")")
+    echo "Final results zipped as: $zip_final"
+fi
