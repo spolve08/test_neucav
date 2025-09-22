@@ -71,7 +71,7 @@ dicom_to_nifti() {
         echo "T1-w convert directory:" ${fileT1_converted_dir}
         echo "T1-w dicom directory:" ${fileT1_dicomdir}
         mkdir -p ${fileT1_converted_dir}
-        dcm2niix -o ${fileT1_converted_dir} -z y -v y -f %p ${fileT1_dicomdir}
+        dcm2niix -o ${fileT1_converted_dir} -z y -v y -f %p -m y ${fileT1_dicomdir}
         
         fileT1_conv=( $( ls ${fileT1_converted_dir}/*nii.gz* ) )
         json_T1_conv=( $( ls ${fileT1_converted_dir}/*json* ) )
