@@ -1,0 +1,73 @@
+
+## Docker Usage
+
+### Docker Command Structure
+
+The Docker version uses volume mounting to access your input files and save results to your local filesystem:
+
+```bash
+docker run \
+    --entrypoint /app/Neucav.sh \
+    -v /path/to/your/input/folder:/app/input \
+    -v /path/to/your/output/folder:/app/output \
+    neucav:latest \
+    -i /app/input/your_image_file \
+    -o /app/output \
+    [additional arguments]
+```
+
+### Docker Parameters Explained
+
+- `--entrypoint /app/Neucav.sh`: Overrides the default container entry point to run the Neucav script
+- `-v /local/path:/container/path`: Mounts local directories into the container
+  - Input volume: Maps your local input directory to `/app/input` in the container
+  - Output volume: Maps your local output directory to `/app/output` in the container
+- `neucav:latest`: The Docker image name and tag
+- All Neucav arguments work the same, but file paths must reference the mounted paths (`/app/input/...` and `/app/output`)
+
+### Docker Examples
+
+#### Process a NIfTI file with high quality
+```bash
+docker run \
+    --entrypoint /app/Neucav.sh \
+    -v /home/user/mri_data:/app/input \
+    -v /home/user/results:/app/output \
+    neucav:latest \
+    -i /app/input/structural_T1_post.nii.gz \
+    -o /app/output \
+    -q 1
+```
+
+#### Process DICOM folder
+```bash
+docker run \
+    --entrypoint /app/Neucav.sh \
+    -v /home/user/dicom_folder:/app/input \
+    -v /home/user/results:/app/output \
+    neucav:latest \
+    -i /app/input \
+    -o /app/output \
+    -q 1
+```
+
+#### Using GPU acceleration (if available)
+```bash
+docker run --gpus all \
+    --entrypoint /app/Neucav.sh \
+    -v /home/user/data:/app/input \
+    -v /home/user/results:/app/output \
+    neucav:latest \
+    -i /app/input/scan.nii.gz \
+    -o /app/output \
+    -q 1 --gpu
+```
+
+### Important Docker Notes
+
+- **File Permissions**: Ensure your local input/output directories have appropriate read/write permissions
+- **Path References**: Always use the container paths (`/app/input/`, `/app/output/`) in the command arguments, not your local paths
+- **Output Persistence**: Results are automatically saved to your local output directory through volume mounting
+- **Container Cleanup**: The container automatically removes itself after completion
+- **Memory Requirements**: Ensure Docker has sufficient memory allocated (recommended: 8GB+)
+
