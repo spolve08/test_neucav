@@ -33,18 +33,17 @@ Main arguments:
 
   -i, --input=<filename>            Input a post operative T1-w-CE image. It could be a NifTI file, a dicom folder or a zip cointainting dicoms 
   -o, --output=<filename>           Output directory.
+  -q, --quality=<quality>   Quality of the output mask (default: 1). It can be 0 (low), 1 (high). The higher the quality, the longer the processing time.
+  Optional:
   -e, --output_extension=<modality> Output file extension (default: same as the input). <extension> can be one of the following: n (nii.gz), d (dicom). The image will be stored accordinlgy.
-  -q, --quality=<quality>   (UPDATE API)        Quality of the output mask (default: 1). It can be 0 (low), 1 (high). The higher the quality, the longer the processing time.
-  -z, --zip                 (DEFAULT)        Create a zip archive of the output files
-Optional:
   -h, --help                        Show this help message
   
 Examples:
 
-`basename $0` -i sub_xxx_T1w_CE.nii.gz -m n
-`basename $0` -i sub_xxx_T1w_CE/ -m d
+`basename $0` -i sub_xxx_T1w_CE.nii.gz -q 0
+`basename $0` -i sub_xxx_T1w_CE/ -q 1
 
-NB: in case of DICOM format, the output will be a folder and not a single file. Use the option -z to receive a compressed file.
+NB: In case of DICOM format, the output will be a folder and not a single file. Use the option -z to receive a compressed file.
 USAGE
     exit 1
 }
